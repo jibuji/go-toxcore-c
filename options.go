@@ -9,7 +9,10 @@ extern void toxCallbackLog(Tox*, Tox_Log_Level, char*, uint32_t, char*, char*);
 
 */
 import "C"
-import "unsafe"
+import (
+	"reflect"
+	"unsafe"
+)
 
 const (
 	SAVEDATA_TYPE_NONE       = int(C.TOX_SAVEDATA_TYPE_NONE)
@@ -73,7 +76,8 @@ func (this *ToxOptions) toCToxOptions() *C.struct_Tox_Options {
 	C.tox_options_set_udp_enabled(toxopts, (C._Bool)(this.Udp_enabled))
 
 	if this.Savedata_data != nil {
-		C.tox_options_set_savedata_data(toxopts, (*C.uint8_t)(&this.Savedata_data[0]), C.size_t(len(this.Savedata_data)))
+		hdr := (*reflect.SliceHeader())(unsafe.Pointer(&this.Savedata_data))
+		C.tox_options_set_savedata_data(toxopts, (*C.uint8_t)(unsafe.Pointer(hdr.Data)), C.size_t(len(this.Savedata_data)))
 		C.tox_options_set_savedata_type(toxopts, C.Tox_Savedata_Type(this.Savedata_type))
 	}
 	C.tox_options_set_tcp_port(toxopts, (C.uint16_t)(this.Tcp_port))
