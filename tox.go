@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
 	// "sync"
 	"unsafe"
 
@@ -589,8 +590,10 @@ func (this *Tox) GetSavedataSize() int32 {
 func (this *Tox) GetSavedata() []byte {
 	r := C.tox_get_savedata_size(this.toxcore)
 	var savedata = make([]byte, int(r))
-
-	C.tox_get_savedata(this.toxcore, (*C.uint8_t)(&savedata[0]))
+	var cData = C.CBytes(savedata)
+	defer C.free(cData)
+	C.tox_get_savedata(this.toxcore, (*C.uint8_t)(cData))
+	savedata = C.GoBytes(cData, C.int(r))
 	return savedata
 }
 
@@ -608,10 +611,11 @@ func (this *Tox) Bootstrap(addr string, port uint16, pubkey string) (bool, error
 
 	var _addr = []byte(addr)
 	var _port = C.uint16_t(port)
-	var _cpubkey = (*C.uint8_t)(&b_pubkey[0])
-
+	// var _cpubkey = (*C.uint8_t)(&b_pubkey[0])
+	var _cpubkey = C.CString(string(b_pubkey))
+	defer C.free(unsafe.Pointer(_cpubkey))
 	var cerr C.Tox_Err_Bootstrap
-	r := C.tox_bootstrap(this.toxcore, (*C.char)(unsafe.Pointer(&_addr[0])), _port, _cpubkey, &cerr)
+	r := C.tox_bootstrap(this.toxcore, (*C.char)(unsafe.Pointer(&_addr[0])), _port, (*C.uint8_t)(unsafe.Pointer(_cpubkey)), &cerr)
 	if cerr > 0 {
 		return false, toxerr(cerr)
 	}
@@ -636,16 +640,18 @@ func (this *Tox) FriendAdd(friendId string, message string) (uint32, error) {
 	defer this.unlock()
 
 	friendId_b, err := hex.DecodeString(friendId)
-	friendId_p := (*C.uint8_t)(&friendId_b[0])
 	if err != nil {
 		log.Panic(err)
 	}
 
-	cmessage := []byte(message)
+	var cmessage = C.CString(message)
+	defer C.free(unsafe.Pointer(cmessage))
+	var friendId_p = C.CBytes(friendId_b)
+	defer C.free(unsafe.Pointer(friendId_p))
 
 	var cerr C.Tox_Err_Friend_Add
-	r := C.tox_friend_add(this.toxcore, friendId_p,
-		(*C.uint8_t)(&cmessage[0]), C.size_t(len(message)), &cerr)
+	r := C.tox_friend_add(this.toxcore, (*C.uchar)(friendId_p),
+		(*C.uint8_t)(unsafe.Pointer(cmessage)), C.size_t(len(message)), &cerr)
 	if cerr > 0 {
 		return uint32(r), toxerr(cerr)
 	}
@@ -660,10 +666,11 @@ func (this *Tox) FriendAddNorequest(friendId string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	friendId_p := (*C.uint8_t)(&friendId_b[0])
+	var friendId_p = C.CBytes(friendId_b)
+	defer C.free(unsafe.Pointer(friendId_p))
 
 	var cerr C.Tox_Err_Friend_Add
-	r := C.tox_friend_add_norequest(this.toxcore, friendId_p, &cerr)
+	r := C.tox_friend_add_norequest(this.toxcore, (*C.uchar)(friendId_p), &cerr)
 	if cerr > 0 {
 		return uint32(r), toxerr(cerr)
 	}
@@ -688,13 +695,15 @@ func (this *Tox) FriendByPublicKey(pubkey string) (uint32, error) {
 func (this *Tox) FriendGetPublicKey(friendNumber uint32) (string, error) {
 	var _fn = C.uint32_t(friendNumber)
 	var pubkey_b = make([]byte, PUBLIC_KEY_SIZE)
-	var pubkey_p = (*C.uint8_t)(&pubkey_b[0])
+	var pubkey_p = C.CBytes(pubkey_b)
+	defer C.free(pubkey_p)
 
 	var cerr C.Tox_Err_Friend_Get_Public_Key
-	r := C.tox_friend_get_public_key(this.toxcore, _fn, pubkey_p, &cerr)
+	r := C.tox_friend_get_public_key(this.toxcore, _fn, (*C.uchar)(pubkey_p), &cerr)
 	if cerr > 0 || bool(r) == false {
 		return "", toxerr(cerr)
 	}
+	pubkey_b = C.GoBytes(pubkey_p, C.int(PUBLIC_KEY_SIZE))
 	pubkey_h := hex.EncodeToString(pubkey_b)
 	pubkey_h = strings.ToUpper(pubkey_h)
 	return pubkey_h, nil
@@ -773,11 +782,13 @@ func (this *Tox) SelfSetName(name string) error {
 	this.lock()
 	defer this.unlock()
 
-	var _name = []byte(name)
+	// var _name = []byte(name)
 	var _length = C.size_t(len(name))
+	var _name = C.CString(name)
+	defer C.free(unsafe.Pointer(_name))
 
 	var cerr C.Tox_Err_Set_Info
-	C.tox_self_set_name(this.toxcore, (*C.uint8_t)(&_name[0]), _length, &cerr)
+	C.tox_self_set_name(this.toxcore, (*C.uint8_t)(unsafe.Pointer(_name)), _length, &cerr)
 	if cerr > 0 {
 		return toxerr(cerr)
 	}
@@ -826,11 +837,11 @@ func (this *Tox) SelfSetStatusMessage(status string) (bool, error) {
 	this.lock()
 	defer this.unlock()
 
-	var _status = []byte(status)
 	var _length = C.size_t(len(status))
-
+	var _status = C.CString(status)
+	defer C.free(unsafe.Pointer(_status))
 	var cerr C.Tox_Err_Set_Info
-	r := C.tox_self_set_status_message(this.toxcore, (*C.uint8_t)(&_status[0]), _length, &cerr)
+	r := C.tox_self_set_status_message(this.toxcore, (*C.uint8_t)(unsafe.Pointer(_status)), _length, &cerr)
 	if cerr > 0 {
 		return false, toxerr(cerr)
 	}

@@ -73,7 +73,9 @@ func (this *ToxOptions) toCToxOptions() *C.struct_Tox_Options {
 	C.tox_options_set_udp_enabled(toxopts, (C._Bool)(this.Udp_enabled))
 
 	if this.Savedata_data != nil {
-		C.tox_options_set_savedata_data(toxopts, (*C.uint8_t)(&this.Savedata_data[0]), C.size_t(len(this.Savedata_data)))
+		var sdata = C.CBytes(this.Savedata_data)
+		defer C.free(sdata)
+		C.tox_options_set_savedata_data(toxopts, (*C.uint8_t)(sdata), C.size_t(len(this.Savedata_data)))
 		C.tox_options_set_savedata_type(toxopts, C.Tox_Savedata_Type(this.Savedata_type))
 	}
 	C.tox_options_set_tcp_port(toxopts, (C.uint16_t)(this.Tcp_port))
